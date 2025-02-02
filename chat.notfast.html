@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Assistant</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/material-components-web/14.0.0/material-components-web.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+        import { GoogleGenerativeAI } from 'https://esm.run/@google/generative-ai';
+        window.GoogleGenerativeAI = GoogleGenerativeAI;
+    </script>
+    <style>
+        :root {
+            --primary: #6750A4;
+            --on-primary: #FFFFFF;
+            --primary-container: #EADDFF;
+            --on-primary-container: #21005E;
+            --surface: #FEF7FF;
+            --on-surface: #1D1B20;
+            --surface-variant: #E7E0EC;
+            --surface-container: #FFFFFF;
+            --error: #DC2626;
+        }
+
+        [data-theme="dark"] {
+            --primary: #D0BCFF;
+            --on-primary: #381E72;
+            --primary-container: #4F378B;
+            --on-primary-container: #EADDFF;
+            --surface: #141218;
+            --on-surface: #E6E1E5;
+            --surface-variant: #49454F;
+            --surface-container: #1D1B20;
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--surface);
+            color: var(--on-surface);
+            transition: all 0.3s ease;
+        }
+
+        .material-icons-round {
+            font-family: 'Material Icons Round';
+        }
+
+        .bottom-sheet {
+            border-radius: 28px 28px 0 0;
+            background-color: var(--surface-container);
+            box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.1);
+        }
+
+        .message {
+            max-width: 85%;
+            margin: 8px;
+            padding: 12px 16px;
+            border-radius: 20px;
+            font-size: 14px;
+            line-height: 20px;
+        }
+
+        .user-message {
+            background-color: var(--primary-container);
+            color: var(--on-primary-container);
+            margin-left: auto;
+            border-bottom-right-radius: 4px;
+        }
+
+        .bot-message {
+            background-color: var(--surface-variant);
+            margin-right: auto;
+            border-bottom-left-radius: 4px;
+        }
+
+        .error-message {
+            background-color: var(--error);
+            color: white;
+            margin: 8px auto;
+            text-align: center;
+            max-width: 90%;
+        }
+
+        .fab {
+            background-color: var(--primary);
+            color: var(--on-primary);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .nav-pill {
+            transition: all 0.3s ease;
+            border: 1px solid var(--surface-variant);
+        }
+
+        .nav-pill.active {
+            background-color: var(--primary-container);
+            color: var(--on-primary-container);
+            border: none;
+        }
+
+        .input-container {
+            background-color: var(--surface-container);
+            border: 1px solid var(--surface-variant);
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+
+        .recording {
+            animation: pulse 1.5s infinite;
+            background-color: var(--error);
+        }
+
+        .snackbar {
+            position: fixed;
+            bottom: 80px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 24px;
+            background-color: #323232;
+            color: white;
+            border-radius: 8px;
+            z-index: 1000;
+            display: none;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translate(-50%, 20px); }
+            to { opacity: 1; transform: translate(-50%, 0); }
+        }
+
+        .loading {
+            display: inline-block;
+            position: relative;
+            width: 40px;
+            height: 10px;
+        }
+        .loading div {
+            position: absolute;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--on-surface);
+            animation: loading 1.2s linear infinite;
+        }
+        .loading div:nth-child(1) { left: 0px; animation-delay: 0s; }
+        .loading div:nth-child(2) { left: 16px; animation-delay: 0.4s; }
+        .loading div:nth-child(3) { left: 32px; animation-delay: 0.8s; }
+
+        @keyframes loading {
+            0%, 100% { opacity: 0; }
+            50% { opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="h-screen flex flex-col">
+        <!-- Top App Bar -->
+        <header class="px-4 py-3 flex items-center justify-between bg-surface-container">
+            <div class="flex items-center">
+                <h1 class="text-xl font-medium ml-2">AI Assistant</h1>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button id="theme-toggle" class="p-2 rounded-full hover:bg-surface-variant/20">
+                    <span class="material-icons-round">dark_mode</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- Navigation Pills -->
+        <div class="flex overflow-x-auto px-4 py-2 space-x-2 bg-surface-container">
+            <button class="nav-pill active whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium flex items-center space-x-2" data-section="chat">
+                <span class="material-icons-round text-lg">chat</span>
+                <span>Chat</span>
+            </button>
+            <button class="nav-pill whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium flex items-center space-x-2" data-section="calculator">
+                <span class="material-icons-round text-lg">calculate</span>
+                <span>Calculadora</span>
+            </button>
+            <button class="nav-pill whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium flex items-center space-x-2" data-section="analysis">
+                <span class="material-icons-round text-lg">psychology</span>
+                <span>Análisis</span>
+            </button>
+            <button class="nav-pill whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium flex items-center space-x-2" data-section="code">
+                <span class="material-icons-round text-lg">code</span>
+                <span>Código</span>
+            </button>
+        </div>
+
+        <!-- Chat Container -->
+        <div class="flex-1 overflow-y-auto px-4 py-2" id="chat-container"></div>
+
+        <!-- Input Area -->
+        <div class="bottom-sheet p-4">
+            <div class="input-container flex items-center space-x-2 p-2 rounded-full">
+                <button class="p-2 rounded-full hover:bg-surface-variant/20">
+                    <span class="material-icons-round">add</span>
+                </button>
+                <input type="text" 
+                       id="message-input"
+                       placeholder="Mensaje..." 
+                       class="flex-1 bg-transparent outline-none text-sm">
+                <button id="voice-button" class="p-2 rounded-full hover:bg-surface-variant/20">
+                    <span class="material-icons-round">mic</span>
+                </button>
+                <button id="send-button" class="fab p-2 rounded-full">
+                    <span class="material-icons-round">send</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Snackbar for notifications -->
+    <div id="snackbar" class="snackbar"></div>
+
+    <script>
+        // Global state for chat histories
+        const state = {
+            currentSection: 'chat',
+            welcomeMessages: {
+                chat: '¡Hola! Soy tu asistente IA. Puedes preguntarme cualquier cosa o pedirme ayuda.',
+                calculator: '¡Bienvenido a la calculadora inteligente! Puedo ayudarte con cálculos matemáticos, conversiones y más.',
+                analysis: '¡Hola! Estoy listo para ayudarte con análisis de datos, estadísticas y visualizaciones.',
+                code: '¡Bienvenido al asistente de código! Puedo ayudarte con programación, debugging y mejores prácticas.'
+            },
+            initialized: {
+                chat: false,
+                calculator: false,
+                analysis: false,
+                code: false
+            }
+        };
+
+        // Initialize or load chat histories
+        const chatHistories = JSON.parse(localStorage.getItem('chatHistories')) || {
+            chat: [],
+            calculator: [],
+            analysis: [],
+            code: []
+        };
+
+        // Theme Toggle
+        const themeToggle = document.getElementById('theme-toggle');
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+        
+        function setTheme(isDark) {
+            document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+            themeToggle.querySelector('.material-icons-round').textContent = isDark ? 'light_mode' : 'dark_mode';
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+        }
+
+        // Initialize theme
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme) {
+            setTheme(savedTheme === 'dark');
+        } else {
+            setTheme(prefersDark.matches);
+        }
+
+        themeToggle.addEventListener('click', () => {
+            const isDark = document.documentElement.getAttribute('data-theme') !== 'dark';
+            setTheme(isDark);
+        });
+
+        // Snackbar
+        function showSnackbar(message, duration = 3000) {
+            const snackbar = document.getElementById('snackbar');
+            snackbar.textContent = message;
+            snackbar.style.display = 'block';
+            setTimeout(() => {
+                snackbar.style.display = 'none';
+            }, duration);
+        }
+
+        // Loading indicator component
+        function createLoadingIndicator() {
+            const loading = document.createElement('div');
+            loading.className = 'loading';
+            for (let i = 0; i < 3; i++) {
+                loading.appendChild(document.createElement('div'));
+            }
+            return loading;
+        }
+
+        // Initialize Gemini
+        let genAI;
+        let model;
+
+        async function initializeAI() {
+            try {
+                const API_KEY = 'AIzaSyBQ9jgicX8AqbQ-wG3pzwqdyjaHLePHsA8';
+                genAI = new window.GoogleGenerativeAI(API_KEY);
+                model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+            } catch (error) {
+                console.error('Error initializing Gemini:', error);
+                showSnackbar('Error al inicializar el asistente IA');
+            }
+        }
+
+        // Voice Recognition setup
+        const voiceButton = document.getElementById('voice-button');
+        const messageInput = document.getElementById('message-input');
+        const sendButton = document.getElementById('send-button');
+        const chatContainer = document.getElementById('chat-container');
+
+        let recognition = null;
+
+        function setupVoiceRecognition() {
+            if ('webkitSpeechRecognition' in window) {
+                recognition = new webkitSpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.lang = 'es-ES';
+
+                recognition.onstart = () => {
+                    voiceButton.classList.add('recording');
+                    showSnackbar('Escuchando...');
+                };
+
+                recognition.onresult = (event) => {
+                    const text = event.results[0][0].transcript;
+                    messageInput.value = text;
+                    sendMessage(text);
+                };
+
+                recognition.onerror = (event) => {
+                    console.error('Speech recognition error:', event.error);
+                    showSnackbar('Error en el reconocimiento de voz');
+                    voiceButton.classList.remove('recording');
+                };
+
+                recognition.onend = () => {
+                    voiceButton.classList.remove('recording');
+                };
+            } else {
+                voiceButton.style.display = 'none';
+                showSnackbar('Reconocimiento de voz no disponible');
+            }
+        }
+
+        // Message handling functions
+        function displayMessage(text, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+            messageDiv.textContent = text;
+            chatContainer.appendChild(messageDiv);
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        function addMessage(text, isUser = false) {
+            // Add message to history
+            chatHistories[state.currentSection].push({
+                text,
+                isUser,
+                timestamp: new Date().toISOString()
+            });
+
+            // Save to localStorage
+            localStorage.setItem('chatHistories', JSON.stringify(chatHistories));
+
+            // Display the message
+            displayMessage(text, isUser);
+        }
+
+        function loadSectionHistory() {
+            chatContainer.innerHTML = '';
+            
+            // Add welcome message if section hasn't been initialized
+            if (!state.initialized[state.currentSection]) {
+                displayMessage(state.welcomeMessages[state.currentSection], false);
+                state.initialized[state.currentSection] = true;
+            }
+
+            // Load existing messages
+            chatHistories[state.currentSection].forEach(message => {
+                displayMessage(message.text, message.isUser);
+            });
+
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // Send Message Function
+        async function sendMessage(text) {
+            if (!text.trim()) return;
+
+            // Add user message
+            addMessage(text, true);
+
+            // Add loading message
+            const loadingDiv = document.createElement('div');
+            loadingDiv.className = 'message bot-message';
+            loadingDiv.appendChild(createLoadingIndicator());
+            chatContainer.appendChild(loadingDiv);
+
+            try {
+                if (!genAI || !model) {
+                    await initializeAI();
+                }
+
+                let promptPrefix = '';
+                switch(state.currentSection) {
+                    case 'calculator':
+                        promptPrefix = 'Actúa como una calculadora inteligente. ';
+                        break;
+                    case 'analysis':
+                        promptPrefix = 'Actúa como un analista de datos. ';
+                        break;
+                    case 'code':
+                        promptPrefix = 'Actúa como un experto programador. ';
+                        break;
+                    default:
+                        promptPrefix = 'Actúa como un asistente general. ';
+                }
+
+                const result = await model.generateContent(promptPrefix + text);
+                const response = await result.response;
+                loadingDiv.remove(); // Remove loading indicator before adding response
+                
+                // Add response to history
+                addMessage(response.text(), false);
+
+            } catch (error) {
+                console.error('Error generating response:', error);
+                loadingDiv.className = 'message error-message';
+                loadingDiv.textContent = 'Error al generar respuesta. Por favor, intenta de nuevo.';
+            }
+
+            messageInput.value = '';
+            chatContainer.scrollTop = chatContainer.scrollHeight;
+        }
+
+        // Voice button click handler
+        voiceButton.addEventListener('click', () => {
+            if (recognition) {
+                if (voiceButton.classList.contains('recording')) {
+                    recognition.stop();
+                } else {
+                    recognition.start();
+                }
+            }
+        });
+
+        // Send button click handler
+        sendButton.addEventListener('click', () => {
+            const text = messageInput.value.trim();
+            if (text) {
+                sendMessage(text);
+            }
+        });
+
+        // Enter key handler
+        messageInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && messageInput.value.trim()) {
+                sendMessage(messageInput.value);
+            }
+        });
+
+        // Navigation Pills
+        document.querySelectorAll('.nav-pill').forEach(pill => {
+            pill.addEventListener('click', () => {
+                if (pill.dataset.section === state.currentSection) return;
+                
+                // Update active state
+                document.querySelectorAll('.nav-pill').forEach(p => p.classList.remove('active'));
+                pill.classList.add('active');
+
+                // Update current section and load its history
+                state.currentSection = pill.dataset.section;
+                loadSectionHistory();
+            });
+        });
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            setupVoiceRecognition();
+            initializeAI();
+            loadSectionHistory();
+        });
+
+        // Save histories to localStorage when window is closed
+        window.addEventListener('beforeunload', () => {
+            localStorage.setItem('chatHistories', JSON.stringify(chatHistories));
+        });
+    </script>
+</body>
+</html>
